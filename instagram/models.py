@@ -1,6 +1,7 @@
 from .helper import timestamp_to_datetime
 import six
 
+
 class ApiModel(object):
 
     @classmethod
@@ -53,13 +54,13 @@ class Media(ApiModel):
         if self.type == 'image':
             return self.images['standard_resolution'].url
         else:
-            return self.videos['standard_resolution'].url
+            return self.video['standard_resolution'].url
 
     def get_low_resolution_url(self):
         if self.type == 'image':
             return self.images['low_resolution'].url
         else:
-            return self.videos['low_resolution'].url
+            return self.video['low_resolution'].url
 
 
     def get_thumbnail_url(self):
@@ -77,19 +78,13 @@ class Media(ApiModel):
         new_media.user = User.object_from_dictionary(entry['user'])
 
         new_media.images = {}
-        for version, version_info in six.iteritems(entry.get('images')):
+        for version, version_info in six.iteritems(entry['images']):
             new_media.images[version] = Image.object_from_dictionary(version_info)
 
         if new_media.type == 'video':
             new_media.videos = {}
-            if entry.get('videos', False):
-                for version, version_info in six.iteritems(entry['videos']):
-                    new_media.videos[version] = Video.object_from_dictionary(version_info)
-
-            ## Sometimes images return with type: 'videos'
-            elif entry.get('images', False):
-                for version, version_info in six.iteritems(entry['images']):
-                    new_media.images[version] = Image.object_from_dictionary(version_info)
+            for version, version_info in six.iteritems(entry['videos']):
+                new_media.videos[version] = Video.object_from_dictionary(version_info)
 
         if 'user_has_liked' in entry:
             new_media.user_has_liked = entry['user_has_liked']
@@ -101,8 +96,9 @@ class Media(ApiModel):
 
         new_media.comment_count = entry['comments']['count']
         new_media.comments = []
-        for comment in entry['comments'].get('data', []):
-            new_media.comments.append(Comment.object_from_dictionary(comment))
+        if 'data' in entry['comments']:
+            for comment in entry['comments']['data']:
+                new_media.comments.append(Comment.object_from_dictionary(comment))
 
         new_media.users_in_photo = []
         if entry.get('users_in_photo'):
@@ -205,11 +201,6 @@ class User(ApiModel):
     def __unicode__(self):
         return "User: %s" % self.username
 
-    def __eq__(self, other):
-        return self.id == other.id
-
-    def __ne__(self, other):
-        return not self == other
 
 class Relationship(ApiModel):
 

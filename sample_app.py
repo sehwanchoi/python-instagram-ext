@@ -2,6 +2,8 @@ import bottle
 import beaker.middleware
 from bottle import route, redirect, post, run, request, hook
 from instagram import client, subscriptions
+import httplib2
+import json
 
 bottle.debug(True)
 
@@ -11,11 +13,20 @@ session_opts = {
     'session.auto': True,
 }
 
+# client_id = "01a3a811976445dbbaec0d15d6aa427b"
+# client_secret = "b51a121cc3894d7f8ceda871bcc52697"
+
 app = beaker.middleware.SessionMiddleware(bottle.app(), session_opts)
 
+# CONFIG = {
+#     'client_id': '<client_id>',
+#     'client_secret': '<client_secret>',
+#     'redirect_uri': 'http://localhost:8515/oauth_callback'
+# }
+
 CONFIG = {
-    'client_id': '<client_id>',
-    'client_secret': '<client_secret>',
+    'client_id': '01a3a811976445dbbaec0d15d6aa427b',
+    'client_secret': '00e1b6d72a8e4dd6bd5378d7aa091871',
     'redirect_uri': 'http://localhost:8515/oauth_callback'
 }
 
@@ -34,7 +45,7 @@ reactor.register_callback(subscriptions.SubscriptionType.TAG, process_tag_update
 @route('/')
 def home():
     try:
-        url = unauthenticated_api.get_authorize_url(scope=["likes","comments"])
+        url = unauthenticated_api.get_authorize_url(scope=["basic","follower_list","public_content","relationships","likes","comments"])
         return '<a href="%s">Connect with Instagram</a>' % url
     except Exception as e:
         print(e)
@@ -42,17 +53,29 @@ def home():
 def get_nav():
     nav_menu = ("<h1>Python Instagram</h1>"
                 "<ul>"
-                    "<li><a href='/recent'>User Recent Media</a> Calls user_recent_media - Get a list of a user's most recent media</li>"
-                    "<li><a href='/user_media_feed'>User Media Feed</a> Calls user_media_feed - Get the currently authenticated user's media feed uses pagination</li>"
-                    "<li><a href='/location_recent_media'>Location Recent Media</a> Calls location_recent_media - Get a list of recent media at a given location, in this case, the Instagram office</li>"
-                    "<li><a href='/media_search'>Media Search</a> Calls media_search - Get a list of media close to a given latitude and longitude</li>"
-                    "<li><a href='/media_popular'>Popular Media</a> Calls media_popular - Get a list of the overall most popular media items</li>"
-                    "<li><a href='/user_search'>User Search</a> Calls user_search - Search for users on instagram, by name or username</li>"
-                    "<li><a href='/user_follows'>User Follows</a> Get the followers of @instagram uses pagination</li>"
-                    "<li><a href='/location_search'>Location Search</a> Calls location_search - Search for a location by lat/lng</li>"
+                    "<li><a href='/testing'>Testing</a> Get captions and photos from recent media</li>"
+                    "<li><a href='/testing-follower'>Testing - Followers</a> Get followers</li>"
+                    "<li><a href='/testing-follow'>Testing - Followers</a> I am follwing..</li>"
                     "<li><a href='/tag_search'>Tags</a> Search for tags, view tag info and get media by tag</li>"
                 "</ul>")
     return nav_menu
+
+# def get_nav():
+#     nav_menu = ("<h1>Python Instagram</h1>"
+#                 "<ul>"
+#                     "<li><a href='/recent'>User Recent Media</a> Calls user_recent_media - Get a list of a user's most recent media</li>"
+#                     "<li><a href='/user_media_feed'>User Media Feed</a> Calls user_media_feed - Get the currently authenticated user's media feed uses pagination</li>"
+#                     "<li><a href='/location_recent_media'>Location Recent Media</a> Calls location_recent_media - Get a list of recent media at a given location, in this case, the Instagram office</li>"
+#                     "<li><a href='/media_search'>Media Search</a> Calls media_search - Get a list of media close to a given latitude and longitude</li>"
+#                     "<li><a href='/media_popular'>Popular Media</a> Calls media_popular - Get a list of the overall most popular media items</li>"
+#                     "<li><a href='/user_search'>User Search</a> Calls user_search - Search for users on instagram, by name or username</li>"
+#                     "<li><a href='/user_follows'>User Follows</a> Get the followers of @instagram uses pagination</li>"
+#                     "<li><a href='/location_search'>Location Search</a> Calls location_search - Search for a location by lat/lng</li>"
+#                     "<li><a href='/tag_search'>Tags</a> Search for tags, view tag info and get media by tag</li>"
+#                     "<li><a href='/testing'>Testing</a> Get captions and photos from recent media</li>"
+#                     "<li><a href='/testing-follower'>Testing - Followers</a> Get followers</li>"
+#                 "</ul>")
+#     return nav_menu
 
 @route('/oauth_callback')
 def on_callback():
@@ -61,13 +84,86 @@ def on_callback():
         return 'Missing code'
     try:
         access_token, user_info = unauthenticated_api.exchange_code_for_access_token(code)
+        print("user info: ")
+        print(user_info)
+
+        user_content = ("<p>Username: %s </p><p>User Bio: %s </p>" % ( user_info['username'], user_info['bio']))
+        user_content += '<img src="%s"/>' % (user_info['profile_picture'])
         if not access_token:
             return 'Could not get access token'
         api = client.InstagramAPI(access_token=access_token, client_secret=CONFIG['client_secret'])
         request.session['access_token'] = access_token
     except Exception as e:
         print(e)
-    return get_nav()
+    return "%s <br/> %s" % (get_nav(), user_content)
+
+
+@route('/testing')
+def test():
+    content = "<h2>Testing... Caption</h2>"
+    access_token = request.session['access_token']
+    api = client.InstagramAPI(access_token=access_token, client_secret=CONFIG['client_secret'])
+    recent_media, next_ = api.user_recent_media()
+
+    for media in recent_media:
+        # print media
+        print media.type
+        if media.type == 'image':
+            content += '<img src="%s"/>' % (media.images['low_resolution'].url)
+        elif media.type == 'video':
+            content += '<video controls width height="150"><source type="video/mp4" src="%s"/></video>' % (media.videos['low_resolution'].url)
+        else:
+            content += 'img src="%s"/>' % (media.images['low_resolution'].url)
+        content += ('<p>"%s"</p>' % (media.caption.text))
+        content += '<hr/>'
+        print ("divider---------------------------------------------------------")
+    return "%s <br/>Remaining API Calls = %s/%s" % (content, api.x_ratelimit_remaining, api.x_ratelimit)
+
+
+@route('/testing-follower')
+def test_follower():
+    content = "<h2>Testing... Followers</h2>"
+    access_token = request.session['access_token']
+    api = client.InstagramAPI(access_token=access_token, client_secret=CONFIG['client_secret'])
+    # followers_list, next_ = api.user_followed_by()
+
+    url = ('https://api.instagram.com/v1/users/self/followed-by?access_token=%s'
+           % access_token)
+    h = httplib2.Http()
+    followers = json.loads(h.request(url, 'GET')[1])
+    follower_list = followers['data']
+    print("follower list")
+    print(follower_list)
+
+    for follower in follower_list:
+        content += ('<p>"%s"</p>' % (follower['username']))
+        content += '<img src="%s"/>' % (follower['profile_picture'])
+        content += '<hr/>'
+        print ("divider---------------------------------------------------------")
+    return "%s <br/>Remaining API Calls = %s/%s" % (content, api.x_ratelimit_remaining, api.x_ratelimit)
+
+@route('/testing-follow')
+def test_follower():
+    content = "<h2>Testing... I Follow</h2>"
+    access_token = request.session['access_token']
+    api = client.InstagramAPI(access_token=access_token, client_secret=CONFIG['client_secret'])
+    # followers_list, next_ = api.user_followed_by()
+
+    url = ('https://api.instagram.com/v1/users/self/follows?access_token=%s'
+           % access_token)
+    h = httplib2.Http()
+    follows = json.loads(h.request(url, 'GET')[1])
+    follow_list = follows['data']
+    print("follower list")
+    print(follow_list)
+
+    for follower in follow_list:
+        content += ('<p>"%s"</p>' % (follower['username']))
+        content += '<img src="%s"/>' % (follower['profile_picture'])
+        content += '<hr/>'
+        print ("divider---------------------------------------------------------")
+    return "%s <br/>Remaining API Calls = %s/%s" % (content, api.x_ratelimit_remaining, api.x_ratelimit)
+
 
 @route('/recent')
 def on_recent():
@@ -78,11 +174,16 @@ def on_recent():
     try:
         api = client.InstagramAPI(access_token=access_token, client_secret=CONFIG['client_secret'])
         recent_media, next = api.user_recent_media()
+        # print("recent:")
+        # print(api.user_recent_media())
+
         photos = []
         for media in recent_media:
             photos.append('<div style="float:left;">')
             if(media.type == 'video'):
                 photos.append('<video controls width height="150"><source type="video/mp4" src="%s"/></video>' % (media.get_standard_resolution_url()))
+            elif(media.type == 'carousel'):
+                photos.append('<img src="%s"/>' % (media.get_low_resolution_url()))
             else:
                 photos.append('<img src="%s"/>' % (media.get_low_resolution_url()))
             photos.append("<br/> <a href='/media_like/%s'>Like</a>  <a href='/media_unlike/%s'>Un-Like</a>  LikesCount=%s</div>" % (media.id,media.id,media.like_count))
@@ -114,8 +215,10 @@ def on_user_media_feed():
     try:
         api = client.InstagramAPI(access_token=access_token, client_secret=CONFIG['client_secret'])
         media_feed, next = api.user_media_feed()
+        # print (media_feed)
         photos = []
         for media in media_feed:
+            print (media)
             photos.append('<img src="%s"/>' % media.get_standard_resolution_url())
         counter = 1
         while next and counter < 3:
